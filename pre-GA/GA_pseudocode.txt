@@ -1,0 +1,236 @@
+# ============================================
+# 0. Load and prepare data
+# ============================================
+
+Read baseball.dat into data frame DF
+
+y_raw = DF["salary"]
+y = log(y_raw)                              # response
+X = all other columns of DF as matrix       # n x 27
+
+n = number of rows in X
+NUM_PRED = 27
+
+# Precompute total sum of squares for y
+mean_y = average of y
+TSS = sum over i=1..n of (y[i] - mean_y)^2
+
+# ============================================
+# 1. Set GA hyperparameters (fixed for now)
+# ============================================
+
+P = 20              # population size
+G = 50              # number of generations
+K = 5               # folds in cross-validation
+MUT_RATE = 0.01     # mutation probability per bit
+Set random seed = 123 for reproducibility
+
+# ============================================
+# 2. Initialize population (Generation 0)
+# ============================================
+
+population = array/list of length P
+fitness    = array of length P
+
+FOR i = 1 to P:
+    # create random chromosome of length 27
+    chromosome = vector length NUM_PRED
+    FOR j = 1 to NUM_PRED:
+        with probability 0.5:
+            chromosome[j] = 1
+        otherwise:
+            chromosome[j] = 0
+    population[i] = chromosome
+
+# ============================================
+# 3. Evaluate fitness for Generation 0
+#    (fitness = K-fold CV-R^2)
+# ============================================
+
+Create a fixed K-fold split of indices {1,...,n}
+(e.g., shuffle indices once with seed 123, then cut into 5 folds)
+
+FOR i = 1 to P:
+
+    b = population[i]          # current chromosome (length 27)
+
+    IF all bits of b are 0:
+        fitness[i] = very small value (e.g. -1e9)
+        CONTINUE to next i
+
+    # Select columns of X where b[j] == 1
+    X_sel = X[:, columns with b[j] == 1]
+
+    # Cross-validated prediction error
+    SSPE = 0     # sum of squared prediction errors over folds
+
+    FOR each fold k = 1 to K:
+
+        test_indices  = indices in fold k
+        train_indices = all indices not in fold k
+
+        X_train = X_sel[train_indices, :]
+        y_train = y[train_indices]
+        X_test  = X_sel[test_indices, :]
+        y_test  = y[test_indices]
+
+        # Fit linear regression on training data (with intercept)
+        Fit model: y_train ~ X_train
+
+        # Predict on test data
+        y_pred = model predictions for X_test
+
+        # Accumulate squared errors
+        FOR each index t in test_indices:
+            error = y[t] - y_pred for that t
+            SSPE = SSPE + error^2
+
+    # Compute CV-R^2
+    R2_cv = 1 - (SSPE / TSS)
+    fitness[i] = R2_cv
+
+# Track best so far (after Gen 0)
+best_fitness_overall    = maximum of fitness
+index_of_best_overall   = index where fitness is max
+best_chromosome_overall = population[index_of_best_overall]
+
+best_history = list containing best_fitness_overall
+
+# ============================================
+# 4. Main GA loop over generations
+# ============================================
+
+FOR gen = 1 to G:
+
+    # ----------------------------------------
+    # 4.1 Compute rank-based selection probs
+    # ----------------------------------------
+
+    # We want to assign ranks 1..P (worst to best)
+
+    Make array of indices: idx = [1, 2, ..., P]
+    Sort idx by fitness[idx] in ascending order
+      (so idx[1] = index of worst, idx[P] = index of best)
+
+    ranks = array length P
+
+    FOR r = 1 to P:
+        i = idx[r]        # i = original position in population
+        ranks[i] = r      # worst gets rank 1, best gets rank P
+
+    total_rank = sum over i of ranks[i]
+    select_prob = array length P
+
+    FOR i = 1 to P:
+        select_prob[i] = ranks[i] / total_rank
+
+    # ----------------------------------------
+    # 4.2 Create new population via selection,
+    #     crossover, and mutation
+    # ----------------------------------------
+
+    new_population = empty list
+
+    WHILE size of new_population < P:
+
+        # Parent 1: chosen based on select_prob
+        Draw parent1_index from {1,...,P} with probabilities select_prob
+        parent1 = population[parent1_index]
+
+        # Parent 2: chosen uniformly at random
+        Draw parent2_index uniformly from {1,...,P}
+        parent2 = population[parent2_index]
+
+        # Single-point crossover
+        Choose a crossover_point k uniformly from {1, 2, ..., NUM_PRED - 1}
+
+        child1 = vector length NUM_PRED
+        child2 = vector length NUM_PRED
+
+        FOR j = 1 to k:
+            child1[j] = parent1[j]
+            child2[j] = parent2[j]
+
+        FOR j = k+1 to NUM_PRED:
+            child1[j] = parent2[j]
+            child2[j] = parent1[j]
+
+        # Mutation on child1
+        FOR j = 1 to NUM_PRED:
+            with probability MUT_RATE:
+                child1[j] = 1 - child1[j]   # flip bit
+
+        # Mutation on child2
+        FOR j = 1 to NUM_PRED:
+            with probability MUT_RATE:
+                child2[j] = 1 - child2[j]
+
+        # Add children to new population
+        Append child1 to new_population
+        IF size of new_population < P:
+            Append child2 to new_population
+
+    # Replace old population with new generation
+    population = new_population
+
+    # ----------------------------------------
+    # 4.3 Evaluate fitness for new generation
+    #     (same CV-R^2 process as before)
+    # ----------------------------------------
+
+    FOR i = 1 to P:
+
+        b = population[i]
+
+        IF all bits of b are 0:
+            fitness[i] = very small value (e.g. -1e9)
+            CONTINUE
+
+        X_sel = X[:, columns where b[j] == 1]
+
+        SSPE = 0
+
+        FOR each fold k = 1 to K:
+
+            test_indices  = indices in fold k
+            train_indices = all indices not in fold k
+
+            X_train = X_sel[train_indices, :]
+            y_train = y[train_indices]
+            X_test  = X_sel[test_indices, :]
+            y_test  = y[test_indices]
+
+            Fit linear regression: y_train ~ X_train
+
+            y_pred = model predictions for X_test
+
+            FOR each index t in test_indices:
+                error = y[t] - y_pred for that t
+                SSPE = SSPE + error^2
+
+        R2_cv = 1 - (SSPE / TSS)
+        fitness[i] = R2_cv
+
+    # ----------------------------------------
+    # 4.4 Update global best and history
+    # ----------------------------------------
+
+    current_best_fitness = maximum of fitness
+    index_of_best        = index where fitness is max
+
+    IF current_best_fitness > best_fitness_overall:
+        best_fitness_overall    = current_best_fitness
+        best_chromosome_overall = population[index_of_best]
+
+    Append best_fitness_overall to best_history
+
+# ============================================
+# 5. Final result after G generations
+# ============================================
+
+Output:
+    best_chromosome_overall   # best subset of predictors (length 27)
+    best_fitness_overall      # best CV-R^2
+    best_history              # best fitness per generation
+    final_population = population
+    final_fitnesses = fitness
