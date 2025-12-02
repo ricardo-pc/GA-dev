@@ -7,7 +7,7 @@ from sklearn.linear_model import LinearRegression
 ```
 
 ```{python}
-import time
+#import time
 
 from sklearn.datasets import load_diabetes
 X_diab, y_diab = load_diabetes(return_X_y=True, as_frame=True)
@@ -18,7 +18,71 @@ fulltime = time.time() - t0
 ```
 
 ```{python}
-def select(X, y, pred_names=None, P=20, G=50, mut_rate=0.01):
+def load_baseball_GA(path="baseball.dat"):
+    """
+    Load and prepare the baseball dataset using the exact predictor order
+    given in Table 3.1 of Givens & Hoeting (p. 67).
+    Returns X (n×27), y (log salary), and predictor names.
+    """
+
+    # Read the whitespace-delimited data
+    df = pd.read_csv(path, sep=r"\s+", header=None)
+
+    # Table 3.1 variable order (27 predictors)
+    predictor_names = [
+        "avg",            # 1 batting average
+        "obp",            # 2 on base pct
+        "runs",           # 3 runs scored
+        "hits",           # 4 hits
+        "doubles",        # 5 doubles
+        "triples",        # 6 triples
+        "hr",             # 7 home runs
+        "rbi",            # 8 runs batted in
+        "walks",          # 9 walks
+        "so",             # 10 strikeouts
+        "sb",             # 11 stolen bases
+        "errors",         # 12 errors
+        "freeagency",     # 13 free agent indicator
+        "arbitration",    # 14 arbitration indicator
+        "runs_per_so",    # 15
+        "hits_per_so",    # 16
+        "hr_per_so",      # 17
+        "rbi_per_so",     # 18
+        "walks_per_so",   # 19
+        "obp_errors",     # 20
+        "runs_errors",    # 21
+        "hits_errors",    # 22
+        "hr_errors",      # 23
+        "so_errors",      # 24
+        "sb_obp",         # 25
+        "sb_runs",        # 26
+        "sb_hits"         # 27
+    ]
+
+    # Last column in baseball.dat is salary
+    salary_name = "salary"
+
+    # Assign column names to df
+    df.columns = predictor_names + [salary_name]
+
+    # Response: log(salary)
+    y = np.log(df[salary_name].to_numpy())
+
+    # Predictor matrix in EXACT Table 3.1 order
+    X = df[predictor_names].to_numpy()
+
+    return X, y, predictor_names
+```
+
+```{python}
+X, y, names = load_baseball_GA("baseball.dat")
+print(X.shape)   # (337, 27)
+print(y.shape)
+print(names)
+```
+
+```{python}
+def select(X, y, pred_names=None, P=20, G=100, mut_rate=0.01):
     """Genetic Algorithm for variable selection.
 
     This function uses a genetic algorithm to do variable selection.
@@ -35,7 +99,7 @@ def select(X, y, pred_names=None, P=20, G=50, mut_rate=0.01):
     P: int 
         Generation size. Default is 20.
     G: int 
-        Number of generations. Default is 50. 
+        Number of generations. Default is 100. 
     mut_rate: float 
         Mutation rate. Default is 0.01 (1%).
 
