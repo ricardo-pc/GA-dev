@@ -11,7 +11,5 @@ def test_output():
     assert isinstance(result2, dict)
 
 def test_bad_input():
-    with pytest.raises(Error):
+    with pytest.raises((TypeError, ValueError)):
         GA.select(y_diab, X_diab)
-
-        

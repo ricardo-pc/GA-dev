@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import math
+import warnings
 from sklearn.model_selection import KFold
 from sklearn.linear_model import LinearRegression, Lasso
 from sklearn.tree import DecisionTreeRegressor
@@ -38,7 +39,7 @@ def select(X, y, pred_names=None, penalty=None, model_type="linear", model_param
         A dictonary with: selected (index of best predictors), selected_names (names of best predictors), R2 (R^2 value of best model), R2pen (penalized R^2 value)
     """
     # check that inputs are formatted as expected 
-    validate_inputs(X, y, pred_names, penalty, model_type, model_params, P, G, mut_rate)
+    _validate_inputs(X, y, pred_names, penalty, model_type, model_params, P, G, mut_rate)
 
     X = np.asarray(X)
     y = np.asarray(y).reshape(-1)
@@ -60,7 +61,7 @@ def select(X, y, pred_names=None, penalty=None, model_type="linear", model_param
     SST = np.sum((y - np.mean(y))**2)
 
     # Main GA function
-    best_chrom, best_main, best_aux = run_ga(
+    best_chrom, best_main, best_aux = _run_ga(
         X, y, penalty, model_type, model_params,
         SST, P, G, mut_rate
     )
@@ -85,13 +86,16 @@ def select(X, y, pred_names=None, penalty=None, model_type="linear", model_param
     return result
 
 
-def validate_inputs(X, y, pred_names, penalty, model_type, model_params, P, G, mut_rate):
+def _validate_inputs(X, y, pred_names, penalty, model_type, model_params, P, G, mut_rate):
     """
     Check for expected input types.
     """
     # X input
     if not isinstance(X, (np.ndarray, pd.DataFrame)):
         raise TypeError("X must be a numpy array or pandas DataFrame")
+    
+    if X.ndim != 2:
+        raise ValueError("X must be a 2-dimensional matrix")
 
     if X.shape[0] <= 1 or X.shape[1] <= 1:
         raise ValueError("X must have more than 1 row and more than 1 column")
@@ -111,13 +115,14 @@ def validate_inputs(X, y, pred_names, penalty, model_type, model_params, P, G, m
         raise ValueError("X and y must have the same number of rows")
 
     # pred_names input 
-    if pred_names is not None and not isinstance(pred_names, list):
-        raise TypeError("pred_names must be a list")
+    if pred_names is not None:
+        if not isinstance(pred_names, list):
+            raise TypeError("pred_names must be a list")
     
-    if len(pred_names) != X.shape[1]:
-        raise ValueError(
-            f"pred_names must have length {X.shape[1]} to match the number of predictors in X"
-        )
+        if len(pred_names) != X.shape[1]:
+            raise ValueError(
+                f"pred_names must have length {X.shape[1]} to match the number of predictors in X"
+            )
 
     # penalty and mut_rate inputs 
     if penalty is not None:
@@ -131,7 +136,7 @@ def validate_inputs(X, y, pred_names, penalty, model_type, model_params, P, G, m
     if not (0 <= mut_rate <= 1):
         raise ValueError("mut_rate must be between 0 and 1")
     if mut_rate > 0.1:
-        print("Warning: mut_rate > 0.1 is very high")
+        warnings.warn("mut_rate > 0.1 is very high", RuntimeWarning)
 
     # P and G inputs
     if P is not None:
@@ -155,7 +160,7 @@ def validate_inputs(X, y, pred_names, penalty, model_type, model_params, P, G, m
         raise TypeError("model_params must be a dict")
     
 
-def run_ga(X, y, penalty, model_type, model_params, SST, P, G, mut_rate):
+def _run_ga(X, y, penalty, model_type, model_params, SST, P, G, mut_rate):
     """
     High-level Genetic Algorithm loop.
     """
@@ -169,7 +174,7 @@ def run_ga(X, y, penalty, model_type, model_params, SST, P, G, mut_rate):
     # Randomly choose 0 or 1 with probability 0.5 
     n, p = X.shape
     pop = (np.random.rand(P, p) < 0.5).astype(int)
-    fitness_raw, fitness_pen = compute_fitness(pop, X, y, penalty, model_type, model_params, SST, folds)
+    fitness_raw, fitness_pen = _compute_fitness(pop, X, y, penalty, model_type, model_params, SST, folds)
 
     if penalty is None:
         main_fit = fitness_raw
@@ -189,10 +194,10 @@ def run_ga(X, y, penalty, model_type, model_params, SST, P, G, mut_rate):
     for gen in range(G):
         
         # Evolve population (new generation)
-        pop = make_new_pop(pop, main_fit, mut_rate)
+        pop = _make_new_pop(pop, main_fit, mut_rate)
 
         # Evaluate fitness for new generation
-        fitness_raw, fitness_pen = compute_fitness(pop, X, y, penalty, model_type, model_params, SST, folds)
+        fitness_raw, fitness_pen = _compute_fitness(pop, X, y, penalty, model_type, model_params, SST, folds)
 
         if penalty is None:
             main_fit = fitness_raw
@@ -213,7 +218,7 @@ def run_ga(X, y, penalty, model_type, model_params, SST, P, G, mut_rate):
 
     return best_chrom, best_main, best_aux
 
-def compute_fitness(gen, X, y, penalty, model_type, model_params, SST, folds):
+def _compute_fitness(gen, X, y, penalty, model_type, model_params, SST, folds):
     """
     Compute the fitness for each chromosome in the current population.
     Where fitness is cross-validated R^2. 
@@ -291,7 +296,7 @@ def compute_fitness(gen, X, y, penalty, model_type, model_params, SST, folds):
     return fitness_raw, fitness_pen
 
 
-def make_new_pop(gen, fitness, mut_rate):
+def _make_new_pop(gen, fitness, mut_rate):
     """
     Create a new generation from the current one.
     """
