@@ -1,4 +1,4 @@
-from simdata1 import X_sim1, y_sim1, R2_sim1
+from .simdata1 import X_sim1, y_sim1, R2_sim1
 import GA
 
 def test_output():

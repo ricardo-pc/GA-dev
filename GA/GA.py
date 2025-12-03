@@ -14,24 +14,24 @@ def select(X, y, pred_names=None, penalty=None, model_type="linear", model_param
 
     Parameters
     ----------
-    X: coerced to numpy array
+    X: numpy array or pandas DataFrame 
         Predictor matrix (n samples by p predictors)
-    y: coerced to numpy array
+    y: numpy array or pandas DataFrame
         Response vector (length n samples)
-    pred_names: optional input, coerced to list
-        Names of predictors. If None, generic names based on indexing are created.
+    pred_names: list
+        Optional input. Names of predictors. If None, generic names based on indexing are created.
     penalty: float
-        Penalize fitness. Default is None.
+        Must be between 0 and 1. Complexity penalty. Default is None.
     model_type: str
-        linear (for linear regression, default), tree (for decision tree), or lasso (for Lasso regression)
-    model_params: dict, optional input
-        Model settings for random forest or lasso regression.
+        "linear" (for linear regression, default), "tree" (for decision tree), or "lasso" (for Lasso regression)
+    model_params: dict
+        Optional input. Model settings for decision tree or Lasso regression. Default is None.
     P: int 
-        Generation size. Default is ...
+        Must be > 1. Generation size. Default is ~1.5*p (where p is the number of predictors).
     G: int 
-        Number of generations. Default is 100. 
+        Must be > 1. Number of generations. Default is 100. 
     mut_rate: float 
-        Mutation rate. Default is 0.01 (1%).
+        Must be between 0 and 1. Mutation rate. Default is 0.01 (1%).
 
     Returns
     -------
