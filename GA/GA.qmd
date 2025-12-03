@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 from sklearn.model_selection import KFold
 from sklearn.linear_model import LinearRegression, Lasso
-from sklearn.ensemble import RandomForestRegressor
+from sklearn.tree import DecisionTreeRegressor
 ```
 
 ```{python}
@@ -13,15 +13,19 @@ import time
 from sklearn.datasets import load_diabetes
 X_diab, y_diab = load_diabetes(return_X_y=True, as_frame=True)
 
-colnames = X_diab.columns.to_numpy()
-
-t0 = time.time()
-results = select(X_diab, y_diab, colnames)
-fulltime = time.time() - t0
+colnames = X_diab.columns
 ```
 
 ```{python}
-def select(X, y, pred_names=None, penalty=0.0, model_type="linear", P=20, G=100, mut_rate=0.01):
+t0 = time.time()
+results = select(X_diab, y_diab, model_type="tree")
+fulltime = time.time() - t0
+print(results)
+print(fulltime)
+```
+
+```{python}
+def select(X, y, pred_names=None, penalty=None, model_type="linear", model_params=None, P=20, G=100, mut_rate=0.01):
     """Genetic Algorithm for variable selection.
 
     This function uses a genetic algorithm to do variable selection.
@@ -33,12 +37,14 @@ def select(X, y, pred_names=None, penalty=0.0, model_type="linear", P=20, G=100,
         Predictor matrix (n samples by p predictors)
     y: coerced to numpy array
         Response vector (length n samples)
-    pred_names: optional input, coerced to numpy array
+    pred_names: optional input, coerced to list
         Names of predictors. If None, generic names based on indexing are created.
     penalty: float
-        Penalize fitness. Default is 0.0.
+        Penalize fitness. Default is None.
     model_type: str
-        linear (for linear regression, default), rf (for random forest), or lasso (for Lasso regression)
+        linear (for linear regression, default), tree (for decision tree), or lasso (for Lasso regression)
+    model_params: dict, optional input
+        Model settings for random forest or lasso regression.
     P: int 
         Generation size. Default is 20.
     G: int 
@@ -58,34 +64,41 @@ def select(X, y, pred_names=None, penalty=0.0, model_type="linear", P=20, G=100,
 
     # If user doesn't pass predictor names, create generic ones
     if pred_names is None:
-        pred_names = np.array([f"x{j}" for j in range(p)])
+        pred_names = [f"x{j}" for j in range(p)]
     else:
-        pred_names = np.asarray(pred_names)
+        pred_names = list(pred_names)
 
     # Total sum of squares 
     SST = np.sum((y - np.mean(y))**2)
 
     # Run the main GA function
-    best_chrom, R2 = run_ga(
-        X, y, penalty, model_type, SST,
-        P, G, mut_rate
+    best_chrom, best_main, best_aux = run_ga(
+        X, y, penalty, model_type, model_params,
+        SST, P, G, mut_rate
     )
 
-    selected = np.where(best_chrom == 1)[0]
-    selected_names = pred_names[best_chrom == 1]
+    if penalty is None:
+        R2 = float(best_main)
+        R2pen = float(best_main)
+    else:
+        R2pen = float(best_main)
+        R2 = float(best_aux)
+
+    selected = np.flatnonzero(best_chrom).tolist()
+    selected_names = [pred_names[j] for j in selected]
 
     result = {
         "selected": selected,
         "selected_names": selected_names,
         "R2": R2,
-
+        "R2pen": R2pen
     }
 
     return result
 ```
 
 ```{python}
-def run_ga(X, y, penalty, model_type, SST, P, G, mut_rate):
+def run_ga(X, y, penalty, model_type, model_params, SST, P, G, mut_rate):
     """
     High-level GA loop.
     """
@@ -100,42 +113,74 @@ def run_ga(X, y, penalty, model_type, SST, P, G, mut_rate):
     # Randomly choose 0 or 1 with probability 0.5 
     n, p = X.shape
     pop = (np.random.rand(P, p) < 0.5).astype(int)
-    fitness, fitness_pen = compute_fitness(pop, X, y, penalty, model_type, SST, folds)
+    fitness_raw, fitness_pen = compute_fitness(pop, X, y, penalty, model_type, model_params, SST, folds)
+
+    if penalty is None:
+        main_fit = fitness_raw
+        aux_fit = fitness_pen
+    else:
+        main_fit = fitness_pen
+        aux_fit = fitness_raw
 
     # Track the global best over all generations
-    best_fit_overall = fitness.max()
-    best_chrom_overall = pop[fitness.argmax()].copy()
+    best_idx = main_fit.argmax()
+    best_main = main_fit[best_idx]
+    best_aux = aux_fit[best_idx]
+    best_chrom = pop[best_idx]
 
     # Loop over generations 
     for gen in range(G):
         
         # Evolve population (new generation)
-        pop = make_new_pop(pop, fitness, mut_rate)
+        pop = make_new_pop(pop, main_fit, mut_rate)
 
         # Evaluate fitness for new generation
-        fitness, fitness_pen = compute_fitness(pop, X, y, penalty, model_type, SST, folds)
+        fitness_raw, fitness_pen = compute_fitness(pop, X, y, penalty, model_type, model_params, SST, folds)
+
+        if penalty is None:
+            main_fit = fitness_raw
+            aux_fit = fitness_pen
+        else:
+            main_fit = fitness_pen
+            aux_fit = fitness_raw
 
         # Track best in this generation
-        best_fit_gen = fitness.max()
-        best_chrom_gen = fitness.argmax()
+        best_idx_gen = main_fit.argmax()
+        best_main_gen = main_fit[best_idx_gen]
 
         # If this generation found a better model, update global best
-        if best_fit_gen > best_fit_overall:
-            best_fit_overall = best_fit_gen
-            best_chrom_overall = pop[best_chrom_gen].copy()
+        if best_main_gen > best_main:
+            best_main = best_main_gen
+            best_aux = aux_fit[best_idx_gen]
+            best_chrom = pop[best_idx_gen]
 
-    return best_chrom_overall, best_fit_overall
+    return best_chrom, best_main, best_aux
 ```
 
 ```{python}
-def compute_fitness(gen, X, y, penalty, model_type, SST, folds):
+def compute_fitness(gen, X, y, penalty, model_type, model_params, SST, folds):
     """
     Compute the fitness for each chromosome in the population.
     Where fitness is cross-validated R^2. 
     """
     P, p = gen.shape
-    fitness = np.zeros(P)
+    fitness_raw = np.zeros(P)
     fitness_pen = np.zeros(P)
+
+    # Default settings for each model
+    default_tree = {
+        "max_depth": 5,
+        "min_samples_split": 2,
+        "min_samples_leaf": 5,
+        "random_state": 42
+    }
+
+    default_lasso = {
+        "alpha": 0.001,
+        "max_iter": 5000,
+        "tol": 1e-4,
+        "random_state": 42
+    }
 
     # Loop over chromosomes 
     for i in range(P):
@@ -144,7 +189,7 @@ def compute_fitness(gen, X, y, penalty, model_type, SST, folds):
 
         # If no predictors selected, give a horrible fitness 
         if k == 0:
-            fitness[i] = -1e9
+            fitness_raw[i] = -1e9
             fitness_pen[i] = -1e9
             continue
 
@@ -163,21 +208,13 @@ def compute_fitness(gen, X, y, penalty, model_type, SST, folds):
             if model_type == "linear":
                 model = LinearRegression()
 
-            elif model_type == "rf":
-                model = RandomForestRegressor(
-                    n_estimators=300,
-                    max_features="sqrt",
-                    n_jobs=-1,
-                    random_state=42
-                )
+            elif model_type == "tree":
+                params = default_tree if model_params is None else model_params
+                model = DecisionTreeRegressor(**params)
 
             elif model_type == "lasso":
-                model = Lasso(
-                    alpha=0.001,
-                    max_iter=5000,
-                    tol=1e-4,
-                    random_state=42
-                )
+                params = default_lasso if model_params is None else model_params
+                model = Lasso(**params)
 
             model.fit(X_train, y_train)
 
@@ -186,11 +223,17 @@ def compute_fitness(gen, X, y, penalty, model_type, SST, folds):
             SSR += np.sum(errors**2)
 
         # Cross-validated R^2
-        R2 = 1 - (SSR/SST)
-        fitness[i] = R2
-        fitness_pen[i] = R2 - penalty*(k/p)
+        R2_raw = 1 - (SSR/SST)
 
-    return fitness, fitness_pen
+        if penalty is None:
+            R2_pen = R2_raw
+        else:
+            R2_pen = R2_raw - penalty*(k/p)
+
+        fitness_raw[i] = R2_raw
+        fitness_pen[i] = R2_pen
+
+    return fitness_raw, fitness_pen
 ```
 
 ```{python}
