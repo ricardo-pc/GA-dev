@@ -17,7 +17,8 @@ def test_nonlinear_tree():
     assert matches >= 2, f"Expected at least 2 of {true_predictors_sim2}, got {selected}"
     
     # Check reasonable number of predictors (not too many extras)
-    assert len(selected) <= 6, f"Selected too many predictors: {len(selected)}"
+    assert len(selected) <= 4, f"Selected too many predictors: {len(selected)}"
     
     # Check R^2 is reasonable
     assert result_sim2["R2"] > 0.5, f"R^2 too low: {result_sim2['R2']}"
+
