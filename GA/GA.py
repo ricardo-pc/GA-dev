@@ -325,16 +325,13 @@ def _make_new_pop(gen, fitness, mut_rate):
     new_pop = np.zeros_like(gen)
 
     # create children 
-    for k in range(pairs):
-        cp = cross_pts[k]
-        heads = (col_idx < cp)
-        tails = ~heads
+    heads_mask = col_idx[np.newaxis, :] < cross_pts[:, np.newaxis]  # shape: (pairs, p)
+    tails_mask = ~heads_mask
 
-        # first child: parent1 head + parent2 tail
-        new_pop[2*k] = parent1[k]*heads + parent2[k]*tails
+    # Create all children at once
+    new_pop[0::2][:pairs] = parent1 * heads_mask + parent2 * tails_mask  # First children (even indices)
+    new_pop[1::2][:pairs] = parent2 * heads_mask + parent1 * tails_mask  # Second children (odd indices)
 
-        # second child: parent1 tail + parent2 head
-        new_pop[2*k+1] = parent2[k]*heads + parent1[k]*tails
 
     # if P is odd, the last child is just a copy 
     # of the best-ranked (highest fitness) parent
