@@ -32,6 +32,8 @@ def select(X, y, pred_names=None, penalty=None, model_type="linear", model_param
         Must be > 1. Number of generations. Default is 100. 
     mut_rate: float 
         Must be between 0 and 1. Mutation rate. Default is 0.01 (1%).
+    crossover_type: str
+        "single" (for single crossover point, default), "double" (for double crossover point)
 
     Returns
     -------
@@ -194,7 +196,7 @@ def _run_ga(X, y, penalty, model_type, model_params, SST, P, G, mut_rate):
     for gen in range(G):
         
         # Evolve population (new generation)
-        pop = _make_new_pop(pop, main_fit, mut_rate)
+        pop = _make_new_pop(pop, main_fit, mut_rate, crossover_type)
 
         # Evaluate fitness for new generation
         fitness_raw, fitness_pen = _compute_fitness(pop, X, y, penalty, model_type, model_params, SST, folds)
@@ -296,7 +298,7 @@ def _compute_fitness(gen, X, y, penalty, model_type, model_params, SST, folds):
     return fitness_raw, fitness_pen
 
 
-def _make_new_pop(gen, fitness, mut_rate):
+def _make_new_pop(gen, fitness, mut_rate, crossover_type = 'single'):
     """
     Create a new generation from the current one.
     """
@@ -318,20 +320,38 @@ def _make_new_pop(gen, fitness, mut_rate):
     parent1 = gen[parent1_idx]
     parent2 = gen[parent2_idx]
 
-    # crossover points
-    cross_pts = np.random.randint(1, p, size=pairs)
     col_idx = np.arange(p)
-
     new_pop = np.zeros_like(gen)
 
-    # create children 
-    heads_mask = col_idx[np.newaxis, :] < cross_pts[:, np.newaxis]  # shape: (pairs, p)
-    tails_mask = ~heads_mask
+    # crossover type
+    if crossover_type == "single":
+        # Single-point crossover
+        cross_pts = np.random.randint(1, p, size=pairs)
+        
+        # create children 
+        heads_mask = col_idx[np.newaxis, :] < cross_pts[:, np.newaxis]  # shape: (pairs, p)
+        tails_mask = ~heads_mask
 
-    # Create all children at once
-    new_pop[0::2][:pairs] = parent1 * heads_mask + parent2 * tails_mask  # First children (even indices)
-    new_pop[1::2][:pairs] = parent2 * heads_mask + parent1 * tails_mask  # Second children (odd indices)
+        # Create all children at once
+        new_pop[0::2][:pairs] = parent1 * heads_mask + parent2 * tails_mask  # First children (even indices)
+        new_pop[1::2][:pairs] = parent2 * heads_mask + parent1 * tails_mask  # Second children (odd indices)
 
+    elif crossover_type == "double":
+        # Double-point crossover
+        cross_pt1 = np.random.randint(1, p-1, size=pairs)
+        cross_pt2 = np.random.randint(cross_pt1 + 1, p, size=pairs)
+        
+        # create children
+        # Middle segment is between the two crossover points
+        heads_mask = col_idx[np.newaxis, :] < cross_pt1[:, np.newaxis]  # shape: (pairs, p)
+        middle_mask = (col_idx[np.newaxis, :] >= cross_pt1[:, np.newaxis]) & (col_idx[np.newaxis, :] < cross_pt2[:, np.newaxis])
+        tails_mask = col_idx[np.newaxis, :] >= cross_pt2[:, np.newaxis]
+
+        # Create all children at once
+        # First child: parent1 head + parent2 middle + parent1 tail
+        new_pop[0::2][:pairs] = parent1 * heads_mask + parent2 * middle_mask + parent1 * tails_mask
+        # Second child: parent2 head + parent1 middle + parent2 tail
+        new_pop[1::2][:pairs] = parent2 * heads_mask + parent1 * middle_mask + parent2 * tails_mask
 
     # if P is odd, the last child is just a copy 
     # of the best-ranked (highest fitness) parent
