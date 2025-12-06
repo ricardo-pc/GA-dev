@@ -129,7 +129,15 @@ A dictionary containing:
 *   `"R2pen"`: Penalized cross-validated $R^2$.
 
 ---
+## Test Scenarios
 
+### Scenario 1: Standard Linear Regression (Baseline)
+
+### Scenario 2: Sparse Linear Regression (With Penalty)
+
+## Scenario 3: Lasso Regression (Double Selection)
+
+## Scenario 4: Non-Linear Relationships (Decision Trees)
 
 
 ---
